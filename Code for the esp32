@@ -1,0 +1,24 @@
+// ESP32 Side: Sends unique key to PC
+void setup() {
+  Serial.begin(115200); // Set baud rate to 115200 standard
+  pinMode(2, OUTPUT);   // Optional: Uses internal blue onboard LED for confirmation light
+}
+
+void loop() {
+  // Check if the PC application sent characters over the serial stream line 
+  if (Serial.available() > 0) {
+    // Read string text up until a new line break character occurs
+    String command = Serial.readStringUntil('\n');
+    
+    
+    if (command == "SEND_KEY") {
+      digitalWrite(2, HIGH);  // Light turn on visual check flash feedback
+      
+      // Physically push validation identity over to PC application wire line
+      Serial.println("ID_099"); // Example unique ID sent to PC
+      
+      delay(500);
+      digitalWrite(2, LOW);   // Light turn off 
+    }
+  }
+}
