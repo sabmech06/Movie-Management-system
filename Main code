@@ -1,0 +1,255 @@
+#include <windows.h>  // Crucial for communicating with the ESP32 chip via COM port
+#include <iostream>
+#include <string>
+#include <fstream>
+#include<iomanip>
+#include<thread>
+
+using namespace std;
+void timer(int t)
+{
+	int time=0;
+	if(t==5)
+	{
+		for(int i=5;i>=0;i--)
+		{
+			system("cls");
+			cout<<setw(100)<<"------------------------------------------------------------------------------------------------------"<<endl;
+			cout<<setw(1)<<"||"<<setw(98)<<" "<<setw(1)<<"||"<<endl;
+			if(i<10)
+			{
+				cout<<setw(1)<<"||"<<setw(49)<<"0"<<i<<""<<setw(48)<<""<<setw(1)<<"||"<<endl;
+			}
+			else
+			cout<<setw(1)<<"||"<<setw(48)<<""<<i<<""<<setw(48)<<""<<setw(1)<<"||"<<endl;
+			cout<<setw(1)<<"||"<<setw(98)<<""<<setw(1)<<"||"<<endl;
+			cout<<setw(100)<<"------------------------------------------------------------------------------------------------------"<<endl;
+			sleep(1);
+		}
+	}
+}
+
+
+const int MAX_MOVIES = 150; // Increased to 150 to safely hold your 100+ required entries
+
+struct Movie {
+    string id;       // Changed from movieNumber to string to match "ID_099" from the project sheet
+    string name;
+    string review;
+};
+
+Movie db[MAX_MOVIES];
+int countMovies = 0;
+const string FILE_NAME = "data.csv";
+
+// Helper function to find where a movie sits in our memory list
+int findIndexByID(string targetID) {
+    for (int i = 0; i < countMovies; i++) {
+        if (db[i].id == targetID) return i;
+    }
+    return -1;
+}
+
+// 1. INITIALIZE DATABASE: Reads data.csv from disk into the program's memory list
+void loadFromFile() {
+    ifstream inFile(FILE_NAME);
+    if (!inFile) {
+        // If file doesn't exist yet, create it with a header row
+        ofstream outFile(FILE_NAME);
+        outFile << "ID,Title,Review" << endl;
+        outFile.close();
+        return;
+    }
+
+    string header, line;
+    getline(inFile, header); // Skip the header row (ID,Title,Review)
+
+    countMovies = 0;
+    // Read the CSV file line-by-line
+    while (getline(inFile, line) && countMovies < MAX_MOVIES) {
+        // Break the comma-separated line apart into ID, Name, and Review
+        size_t firstComma = line.find(',');
+        size_t secondComma = line.find(',', firstComma + 1);
+
+        if (firstComma != string::npos && secondComma != string::npos) {
+            db[countMovies].id = line.substr(0, firstComma);
+            db[countMovies].name = line.substr(firstComma + 1, secondComma - firstComma - 1);
+            db[countMovies].review = line.substr(secondComma + 1);
+            countMovies++;
+        }
+    }
+    inFile.close();
+    cout << "Loaded " << countMovies << " records from database successfully." << endl;
+}
+
+// 2. SAVE TO FILE: Writes memory list back to disk
+void saveToFile() {
+    ofstream outFile(FILE_NAME);
+    if (outFile.is_open()) {
+        outFile << "ID,Title,Review" << endl; // Write headers
+        for (int i = 0; i < countMovies; i++) {
+            outFile << db[i].id << "," << db[i].name << "," << db[i].review << endl;
+        }
+        outFile.close();
+    }
+}
+
+// 3. ADD MOVIE
+void addMovie() {
+    if (countMovies == MAX_MOVIES) {
+        cout << "Database is full!" << endl;
+        return;
+    }
+    Movie m;
+    cout << "Enter unique ID (e.g., ID_099): ";
+    cin >> m.id;
+    
+    if (findIndexByID(m.id) != -1) {
+        cout << "This Movie ID already exists." << endl;
+        return;
+    }
+    cout << "Enter movie name: ";
+    cin.ignore();
+    getline(cin, m.name);
+    cout << "Enter movie review: ";
+    getline(cin, m.review);
+
+    db[countMovies] = m;
+    countMovies++;
+    saveToFile(); // Instantly save to data.csv
+    cout << "Movie added and saved to file." << endl;
+}
+
+// 4. SHOW ALL RECORDS
+void showAll() {
+    if (countMovies == 0) {
+        cout << "No records available." << endl;
+        return;
+    }
+    for (int i = 0; i < countMovies; i++) {
+        cout << "\n-----------------------------" << endl;
+        cout << "ID:     " << db[i].id << endl;
+        cout << "Name:   " << db[i].name << endl;
+        cout << "Review: " << db[i].review << endl;
+    }
+    cout << "-----------------------------\n" << endl;
+}
+
+// 5. HARDWARE INTEGRATED SEARCH FUNCTION (Combines your code and your professor's snippet)
+void searchDatabaseWithHardware() {
+    // Open communication port line to talk to ESP32
+    // CRITICAL: Change "COM3" to match whatever port number your Arduino IDE states!
+    HANDLE hSerial = CreateFile("\\\\.\\COM3", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (hSerial == INVALID_HANDLE_VALUE) {
+        cout << "Error opening serial port! Ensure ESP32 is plugged in and check COM port." << endl;
+        return;
+    }
+
+    // Set configuration parameters to match project 115200 standard speed
+    DCB dcbSerialParams = { 0 };
+    dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
+    GetCommState(hSerial, &dcbSerialParams);
+    dcbSerialParams.BaudRate = CBR_115200;
+    dcbSerialParams.ByteSize = 8;
+    dcbSerialParams.StopBits = ONESTOPBIT;
+    dcbSerialParams.Parity = NOPARITY;
+    SetCommState(hSerial, &dcbSerialParams);
+
+    // Send "SEND_KEY\n" command to trigger the ESP32 (Matches your project spec sheet string)
+    DWORD bytesWritten;
+    string command = "SEND_KEY\n";
+    WriteFile(hSerial, command.c_str(), command.length(), &bytesWritten, NULL);
+
+    cout << "Trigger sent. Awaiting validation key from ESP32..." << endl;
+    Sleep(500); // Give the wire a split second to send characters over
+
+    // Create a container buffer to catch incoming transmission data
+    char szBuff[20] = { 0 };
+    DWORD bytesRead;
+    
+    if (ReadFile(hSerial, szBuff, 19, &bytesRead, NULL)) {
+        string targetID = "";
+        // Clean out and isolate text data safely
+        for (int i = 0; i < (int)bytesRead; i++) {
+            if (szBuff[i] != '\r' && szBuff[i] != '\n') {
+                targetID += szBuff[i];
+            }
+        }
+
+        cout << "Hardware Verified Token Key: [" << targetID << "]" << endl;
+
+        // Run your professor's exact Sequential File Search logic from the prompt specification
+        ifstream file(FILE_NAME);
+        string line;
+        bool found = false;
+
+        while (getline(file, line)) {
+            if (line.find(targetID) == 0) { // Sequential check for matching ID
+                cout << "\n>>> Data Retrieved: " << line << endl;
+                found = true;
+                break;
+            }
+        }
+        file.close();
+
+        if (!found) {
+            cout << "No matching records found in data.csv for this secure key token." << endl;
+        }
+    }
+
+    CloseHandle(hSerial); // Always hang up the phone connection safely
+}
+
+// 6. UPDATE MOVIE REVIEW
+void updateReview() {
+    string targetID;
+    cout << "Enter Movie ID to update review: ";
+    cin >> targetID;
+    
+    int idx = findIndexByID(targetID);
+    if (idx == -1) {
+        cout << "ID Not Found!" << endl;
+        return;
+    }
+    cout << "Updating review for: " << db[idx].name << endl;
+    cout << "Enter updated review text: ";
+    cin.ignore();
+    getline(cin, db[idx].review);
+    
+    saveToFile(); // Write modification straight to disk
+    cout << "Review has been updated and saved successfully." << endl;
+}
+
+void showMenu() {
+    cout << "=== Movie Management System ===" << endl;
+    cout << "1. Add Movie entry" << endl;
+    cout << "2. Show all movies' data" << endl;
+    cout << "3. Secure Hardware Search (ESP32)" << endl;
+    cout << "4. Update movie review" << endl;
+    cout << "5. Exit system" << endl;
+    cout << "Enter option selection choice: ";
+}
+
+int main() {
+	int situation=5; 
+	timer(situation);
+    loadFromFile(); // Preload files straight away on entry boot
+    while (true) {
+        showMenu();
+        int choice;
+        cin >> choice;
+        if (choice == 1) addMovie();
+        else if (choice == 2) showAll();
+        else if (choice == 3) searchDatabaseWithHardware(); // Triggers hardware serial stream query loop
+        else if (choice == 4) updateReview();
+        else if (choice == 5) {
+            cout << "Exiting system application ledger." << endl;
+            break;
+        } else {
+            cout << "Invalid menu input selected." << endl;
+        }
+        cout << endl;
+    }
+    return 0;
+}
