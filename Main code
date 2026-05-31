@@ -30,115 +30,104 @@ void timer(int t)
 }
 
 
-const int MAX_MOVIES = 150; // Increased to 150 to safely hold your 100+ required entries
-
-struct Movie {
-    string id;       // Changed from movieNumber to string to match "ID_099" from the project sheet
-    string name;
-    string review;
-};
-
-Movie db[MAX_MOVIES];
-int countMovies = 0;
 const string FILE_NAME = "data.csv";
 
-// Helper function to find where a movie sits in our memory list
-int findIndexByID(string targetID) {
-    for (int i = 0; i < countMovies; i++) {
-        if (db[i].id == targetID) return i;
-    }
-    return -1;
-}
-
-// 1. INITIALIZE DATABASE: Reads data.csv from disk into the program's memory list
-void loadFromFile() {
+// 1. INITIALIZE DATABASE: Simply checks if the file exists. If not, creates it with a header row.
+void initializeDatabase() {
     ifstream inFile(FILE_NAME);
     if (!inFile) {
-        // If file doesn't exist yet, create it with a header row
         ofstream outFile(FILE_NAME);
-        outFile << "ID,Title,Review" << endl;
+        outFile << "ID,Title,Review" << endl; // Write direct CSV column headers
         outFile.close();
+    } else {
+        inFile.close();
+    }
+}
+
+// Helper function: Checks if an ID already exists directly inside the data.csv file
+bool isIDExisting(string targetID) {
+    ifstream file(FILE_NAME);
+    string line;
+    while (getline(file, line)) {
+        if (line.find(targetID + ",") == 0) { // Check if the line starts with our ID followed by a comma
+            file.close();
+            return true; // Found a duplicate!
+        }
+    }
+    file.close();
+    return false; // ID is completely unique
+}
+
+// 2. ADD MOVIE: Writes your inputs directly to the bottom of the CSV file immediately
+void addMovie() {
+    string id, name, review;
+    cout << "Enter unique ID (e.g., ID_099): ";
+    cin >> id;
+    
+    // Check the file directly for duplicates before allowing the add
+    if (isIDExisting(id)) {
+        cout << "Error: This Movie ID already exists in the database file." << endl;
+        return;
+    }
+
+    cout << "Enter movie name: ";
+    cin.ignore();
+    getline(cin, name);
+    cout << "Enter movie review: ";
+    getline(cin, review);
+
+    // Open file in Append mode ("ios::app") to glue data to the absolute bottom
+    ofstream outFile(FILE_NAME, ios::app);
+    if (outFile.is_open()) {
+        outFile << id << "," << name << "," << review << endl;
+        outFile.close();
+        cout << "Movie added directly to data.csv successfully." << endl;
+    } else {
+        cout << "Error: Could not open database file for writing." << endl;
+    }
+}
+
+// 3. SHOW ALL RECORDS: Streams and displays rows directly from the text file row-by-row
+void showAll() {
+    ifstream inFile(FILE_NAME);
+    if (!inFile) {
+        cout << "No records available (Database file missing)." << endl;
         return;
     }
 
     string header, line;
-    getline(inFile, header); // Skip the header row (ID,Title,Review)
+    getline(inFile, header); // Read and skip the header row (ID,Title,Review)
 
-    countMovies = 0;
-    // Read the CSV file line-by-line
-    while (getline(inFile, line) && countMovies < MAX_MOVIES) {
-        // Break the comma-separated line apart into ID, Name, and Review
+    int count = 0;
+    while (getline(inFile, line)) {
+        // Parse the comma-separated line into pieces
         size_t firstComma = line.find(',');
         size_t secondComma = line.find(',', firstComma + 1);
 
         if (firstComma != string::npos && secondComma != string::npos) {
-            db[countMovies].id = line.substr(0, firstComma);
-            db[countMovies].name = line.substr(firstComma + 1, secondComma - firstComma - 1);
-            db[countMovies].review = line.substr(secondComma + 1);
-            countMovies++;
+            string id = line.substr(0, firstComma);
+            string name = line.substr(firstComma + 1, secondComma - firstComma - 1);
+            string review = line.substr(secondComma + 1);
+
+            cout << "\n-----------------------------" << endl;
+            cout << "ID:     " << id << endl;
+            cout << "Name:   " << name << endl;
+            cout << "Review: " << review << endl;
+            count++;
         }
     }
     inFile.close();
-    cout << "Loaded " << countMovies << " records from database successfully." << endl;
-}
 
-// 2. SAVE TO FILE: Writes memory list back to disk
-void saveToFile() {
-    ofstream outFile(FILE_NAME);
-    if (outFile.is_open()) {
-        outFile << "ID,Title,Review" << endl; // Write headers
-        for (int i = 0; i < countMovies; i++) {
-            outFile << db[i].id << "," << db[i].name << "," << db[i].review << endl;
-        }
-        outFile.close();
+    if (count == 0) {
+        cout << "Database file is empty." << endl;
+    } else {
+        cout << "-----------------------------\nTotal Records Found: " << count << endl;
     }
 }
 
-// 3. ADD MOVIE
-void addMovie() {
-    if (countMovies == MAX_MOVIES) {
-        cout << "Database is full!" << endl;
-        return;
-    }
-    Movie m;
-    cout << "Enter unique ID (e.g., ID_099): ";
-    cin >> m.id;
-    
-    if (findIndexByID(m.id) != -1) {
-        cout << "This Movie ID already exists." << endl;
-        return;
-    }
-    cout << "Enter movie name: ";
-    cin.ignore();
-    getline(cin, m.name);
-    cout << "Enter movie review: ";
-    getline(cin, m.review);
-
-    db[countMovies] = m;
-    countMovies++;
-    saveToFile(); // Instantly save to data.csv
-    cout << "Movie added and saved to file." << endl;
-}
-
-// 4. SHOW ALL RECORDS
-void showAll() {
-    if (countMovies == 0) {
-        cout << "No records available." << endl;
-        return;
-    }
-    for (int i = 0; i < countMovies; i++) {
-        cout << "\n-----------------------------" << endl;
-        cout << "ID:     " << db[i].id << endl;
-        cout << "Name:   " << db[i].name << endl;
-        cout << "Review: " << db[i].review << endl;
-    }
-    cout << "-----------------------------\n" << endl;
-}
-
-// 5. HARDWARE INTEGRATED SEARCH FUNCTION (Combines your code and your professor's snippet)
+// 4. SECURE HARDWARE SEARCH: Triggered by option 3, gets key from ESP32, searches CSV sequentially
 void searchDatabaseWithHardware() {
-    // Open communication port line to talk to ESP32
-    // CRITICAL: Change "COM3" to match whatever port number your Arduino IDE states!
+    // Open communication port line to talk to ESP32 (Change "COM3" to match your Arduino IDE port!)
     HANDLE hSerial = CreateFile("\\\\.\\COM3", GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 
     if (hSerial == INVALID_HANDLE_VALUE) {
@@ -146,7 +135,7 @@ void searchDatabaseWithHardware() {
         return;
     }
 
-    // Set configuration parameters to match project 115200 standard speed
+    // Set configuration parameters to match your project's 115200 standard speed
     DCB dcbSerialParams = { 0 };
     dcbSerialParams.DCBlength = sizeof(dcbSerialParams);
     GetCommState(hSerial, &dcbSerialParams);
@@ -156,7 +145,7 @@ void searchDatabaseWithHardware() {
     dcbSerialParams.Parity = NOPARITY;
     SetCommState(hSerial, &dcbSerialParams);
 
-    // Send "SEND_KEY\n" command to trigger the ESP32 (Matches your project spec sheet string)
+    // Send "SEND_KEY\n" command down the wire to trigger the ESP32
     DWORD bytesWritten;
     string command = "SEND_KEY\n";
     WriteFile(hSerial, command.c_str(), command.length(), &bytesWritten, NULL);
@@ -164,22 +153,22 @@ void searchDatabaseWithHardware() {
     cout << "Trigger sent. Awaiting validation key from ESP32..." << endl;
     Sleep(500); // Give the wire a split second to send characters over
 
-    // Create a container buffer to catch incoming transmission data
+    // Buffer array to catch incoming transmission data characters
     char szBuff[20] = { 0 };
     DWORD bytesRead;
     
     if (ReadFile(hSerial, szBuff, 19, &bytesRead, NULL)) {
         string targetID = "";
-        // Clean out and isolate text data safely
+        // Clean out and isolate text data safely, removing hidden format characters (\r or \n)
         for (int i = 0; i < (int)bytesRead; i++) {
             if (szBuff[i] != '\r' && szBuff[i] != '\n') {
                 targetID += szBuff[i];
             }
         }
 
-        cout << "Hardware Verified Token Key: [" << targetID << "]" << endl;
+        cout << "Hardware Verified Token Key Received: [" << targetID << "]" << endl;
 
-        // Run your professor's exact Sequential File Search logic from the prompt specification
+        // >>> YOUR PROFESSOR'S EXACT SEQUENTIAL CSV FILE SEARCH CODE SITS HERE <<<
         ifstream file(FILE_NAME);
         string line;
         bool found = false;
@@ -198,27 +187,61 @@ void searchDatabaseWithHardware() {
         }
     }
 
-    CloseHandle(hSerial); // Always hang up the phone connection safely
+    CloseHandle(hSerial); // Hang up connection port safely
 }
 
-// 6. UPDATE MOVIE REVIEW
+// 5. UPDATE MOVIE REVIEW: Uses the temporary file scratchpad logic taught in your slides!
 void updateReview() {
     string targetID;
     cout << "Enter Movie ID to update review: ";
     cin >> targetID;
-    
-    int idx = findIndexByID(targetID);
-    if (idx == -1) {
-        cout << "ID Not Found!" << endl;
+
+    if (!isIDExisting(targetID)) {
+        cout << "ID Not Found inside the database!" << endl;
         return;
     }
-    cout << "Updating review for: " << db[idx].name << endl;
-    cout << "Enter updated review text: ";
-    cin.ignore();
-    getline(cin, db[idx].review);
-    
-    saveToFile(); // Write modification straight to disk
-    cout << "Review has been updated and saved successfully." << endl;
+
+    // Setting up our two file pointers to process data sequentially
+    ifstream inFile(FILE_NAME);
+    ofstream tempFile("temp.csv"); // Temporary file scratchpad
+
+    string line;
+    bool updated = false;
+
+    // Copy row headers straight over
+    getline(inFile, line);
+    tempFile << line << endl;
+
+    // Process file rows sequentially line-by-line
+    while (getline(inFile, line)) {
+        if (line.find(targetID + ",") == 0) { // Found the row to change!
+            size_t firstComma = line.find(',');
+            size_t secondComma = line.find(',', firstComma + 1);
+            string name = line.substr(firstComma + 1, secondComma - firstComma - 1);
+
+            cout << "Updating review for: " << name << endl;
+            cout << "Enter updated review text: ";
+            string newReview;
+            cin.ignore();
+            getline(cin, newReview);
+
+            // Write the new modified row down to our temporary file scratchpad instead of the old one
+            tempFile << targetID << "," << name << "," << newReview << endl;
+            updated = true;
+        } else {
+            // Keep original row untouched and pass it straight through to temp.csv
+            tempFile << line << endl;
+        }
+    }
+
+    inFile.close();
+    tempFile.close();
+
+    // Final file swap sequence to overwrite old data
+    remove(FILE_NAME.c_str());             // Delete old data.csv
+    rename("temp.csv", FILE_NAME.c_str()); // Rename temp.csv to data.csv
+
+    if (updated) cout << "Review has been updated and saved successfully!" << endl;
 }
 
 void showMenu() {
@@ -234,17 +257,17 @@ void showMenu() {
 int main() {
 	int situation=5; 
 	timer(situation);
-    loadFromFile(); // Preload files straight away on entry boot
+    initializeDatabase(); // Make sure data.csv is safely created or opened on launch
     while (true) {
         showMenu();
         int choice;
         cin >> choice;
         if (choice == 1) addMovie();
         else if (choice == 2) showAll();
-        else if (choice == 3) searchDatabaseWithHardware(); // Triggers hardware serial stream query loop
+        else if (choice == 3) searchDatabaseWithHardware(); // Launch hardware loop
         else if (choice == 4) updateReview();
         else if (choice == 5) {
-            cout << "Exiting system application ledger." << endl;
+            cout << "Exiting system application." << endl;
             break;
         } else {
             cout << "Invalid menu input selected." << endl;
